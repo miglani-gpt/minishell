@@ -7,8 +7,9 @@
 #include "builtins.h"
 #include "redirection.h"
 #include "pipes.h"
+#include "background.h"
 
-void execute_external_command(char **args)
+void execute_external_command(char **args, int background)
 {
     pid_t pid = fork();
 
@@ -38,13 +39,28 @@ void execute_external_command(char **args)
     }
     else
     {
-        int status;
-        waitpid(pid, &status, 0);
+        if (background)
+        {
+            printf("[background pid: %d]\n", pid);
+            waitpid(pid, NULL, WNOHANG);
+        }
+        else
+        {
+            int status;
+            waitpid(pid, &status, 0);
+        }
     }
 }
 
 void execute_command(char **args)
 {
+    if (args[0] == NULL)
+    {
+        return;
+    }
+
+    int background = is_background_process(args);
+
     if (args[0] == NULL)
     {
         return;
@@ -60,6 +76,12 @@ void execute_command(char **args)
     {
         int saved_stdin = -1;
         int saved_stdout = -1;
+
+        if (background)
+        {
+            fprintf(stderr, "minishell: background execution not supported for built-ins\n");
+            return;
+        }
 
         if (setup_input_redirection(args, &saved_stdin) == -1)
         {
@@ -82,5 +104,5 @@ void execute_command(char **args)
         return;
     }
 
-    execute_external_command(args);
+    execute_external_command(args, background);
 }

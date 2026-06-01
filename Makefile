@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -g -Iinclude
 
-SRC = src/main.c src/shell.c src/parser.c src/executor.c src/builtins.c src/redirection.c src/pipes.c
+SRC = src/main.c src/shell.c src/parser.c src/executor.c src/builtins.c src/redirection.c src/pipes.c src/background.c
 TARGET = minishell
 
 all:
