@@ -12,3 +12,6 @@ clean:
 
 run: all
 	./$(TARGET)
+
+test: all
+	./tests/test_minishell.sh
