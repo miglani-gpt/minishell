@@ -1,8 +1,0 @@
-total 52
--rw-r--r-- 1 desperado desperado   245 Jun  1 11:48 Makefile
--rw-r--r-- 1 desperado desperado  5290 Jun  1 11:26 README.md
--rw-r--r-- 1 desperado desperado     0 Jun  1 11:50 files.txt
-drwxr-xr-x 2 desperado desperado  4096 Jun  1 11:47 include
--rwxr-xr-x 1 desperado desperado 27704 Jun  1 11:49 minishell
--rw-r--r-- 1 desperado desperado    12 Jun  1 11:49 output.txt
-drwxr-xr-x 2 desperado desperado  4096 Jun  1 11:47 src

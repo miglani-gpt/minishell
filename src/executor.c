@@ -6,6 +6,7 @@
 #include "executor.h"
 #include "builtins.h"
 #include "redirection.h"
+#include "pipes.h"
 
 void execute_external_command(char **args)
 {
@@ -46,6 +47,12 @@ void execute_command(char **args)
 {
     if (args[0] == NULL)
     {
+        return;
+    }
+
+    if (has_pipe(args) != -1)
+    {
+        execute_piped_command(args);
         return;
     }
 
