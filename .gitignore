@@ -1,0 +1,16 @@
+# Compiled binary
+minishell
+
+# Object files
+*.o
+
+# Debug files
+*.out
+
+# Editor files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
