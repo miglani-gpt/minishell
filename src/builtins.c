@@ -5,6 +5,20 @@
 
 #include "builtins.h"
 
+int is_builtin(char *command)
+{
+    if (command == NULL)
+    {
+        return 0;
+    }
+
+    return strcmp(command, "cd") == 0 ||
+           strcmp(command, "pwd") == 0 ||
+           strcmp(command, "help") == 0 ||
+           strcmp(command, "clear") == 0 ||
+           strcmp(command, "exit") == 0;
+}
+
 int builtin_cd(char **args)
 {
     if (args[1] == NULL)
@@ -59,6 +73,10 @@ int builtin_help(void)
     printf("  help             Show this help message\n");
     printf("  clear            Clear the terminal screen\n");
     printf("  exit             Exit the shell\n");
+    printf("\n");
+    printf("Redirection:\n");
+    printf("  command > file    Redirect output to file\n");
+    printf("  command >> file   Append output to file\n");
     printf("\n");
     printf("External commands are executed using fork() and execvp().\n");
 

@@ -5,6 +5,7 @@
 
 #include "executor.h"
 #include "builtins.h"
+#include "redirection.h"
 
 void execute_external_command(char **args)
 {
@@ -18,6 +19,11 @@ void execute_external_command(char **args)
 
     if (pid == 0)
     {
+        if (setup_output_redirection(args, NULL) == -1)
+        {
+            exit(EXIT_FAILURE);
+        }
+
         if (execvp(args[0], args) == -1)
         {
             perror("minishell");
@@ -38,8 +44,19 @@ void execute_command(char **args)
         return;
     }
 
-    if (handle_builtin(args))
+    if (is_builtin(args[0]))
     {
+        int saved_stdout = -1;
+
+        if (setup_output_redirection(args, &saved_stdout) == -1)
+        {
+            restore_output_redirection(saved_stdout);
+            return;
+        }
+
+        handle_builtin(args);
+
+        restore_output_redirection(saved_stdout);
         return;
     }
 
