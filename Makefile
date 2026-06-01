@@ -1,10 +1,14 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -g
+CFLAGS = -Wall -Wextra -g -Iinclude
 
+SRC = src/main.c src/shell.c src/parser.c src/executor.c src/builtins.c
 TARGET = minishell
 
 all:
-	$(CC) $(CFLAGS) main.c -o $(TARGET)
+	$(CC) $(CFLAGS) $(SRC) -o $(TARGET)
 
 clean:
 	rm -f $(TARGET)
+
+run: all
+	./$(TARGET)
