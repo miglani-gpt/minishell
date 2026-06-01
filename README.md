@@ -1,54 +1,132 @@
 # MiniShell
 
-MiniShell is a simple Unix-like command-line shell written in C.
+MiniShell is a modular Unix-like command-line shell written in C.
 
-This project is being built step by step to understand how real shells work internally using Linux system calls such as `fork()`, `execvp()`, and `waitpid()`.
+This project is built to understand how traditional Unix shells work internally using low-level Linux system calls such as `fork()`, `execvp()`, `waitpid()`, `pipe()`, `dup2()`, `open()`, and `chdir()`.
 
-The goal of this project is to build a small but well-structured shell that gradually supports command execution, built-in commands, redirection, pipes, background processes, command history, and signal handling.
+The goal of MiniShell is to build a small but well-structured shell that supports command execution, built-in commands, input/output redirection, single-pipe command chaining, background processes, and automated testing.
 
 ---
 
-## Features Implemented
+## Features
 
-* Displays a custom shell prompt
+### Core Shell
+
+* Custom shell prompt
+* Displays the current working directory in the prompt
 * Reads user input using `getline()`
 * Parses simple commands and arguments
 * Executes external Linux commands
-* Creates child processes using `fork()`
-* Executes programs using `execvp()`
-* Waits for foreground commands using `waitpid()`
-* Supports the `exit` command
 * Handles empty input safely
-* Uses dynamic memory allocation for command input and arguments
+* Exits cleanly using the `exit` command
 
----
+### Built-in Commands
 
-## Commands Tested
+MiniShell currently supports the following built-in commands:
 
-The current version supports simple commands such as:
+| Command          | Description                          |
+| ---------------- | ------------------------------------ |
+| `cd [directory]` | Change the current working directory |
+| `pwd`            | Print the current working directory  |
+| `help`           | Display MiniShell help information   |
+| `clear`          | Clear the terminal screen            |
+| `exit`           | Exit the shell                       |
+
+### External Command Execution
+
+MiniShell can run standard Linux commands such as:
 
 ```bash
 ls
 ls -l
-pwd
 date
 whoami
 echo hello
-clear
-exit
+cat README.md
+wc -l README.md
 ```
+
+External commands are executed using the traditional Unix process model:
+
+```text
+fork()  -> create child process
+execvp() -> replace child process with requested program
+waitpid() -> parent waits for foreground process
+```
+
+### Input and Output Redirection
+
+MiniShell supports output redirection:
+
+```bash
+echo hello > output.txt
+echo world >> output.txt
+ls -l > files.txt
+pwd > path.txt
+```
+
+Supported output operators:
+
+| Operator | Meaning                                                  |
+| -------- | -------------------------------------------------------- |
+| `>`      | Redirect output to a file and overwrite existing content |
+| `>>`     | Redirect output to a file and append to existing content |
+
+MiniShell also supports input redirection:
+
+```bash
+wc -l < names.txt
+sort < names.txt
+cat < README.md
+```
+
+Combined input and output redirection is also supported:
+
+```bash
+sort < names.txt > sorted.txt
+wc -l < names.txt >> count.txt
+```
+
+### Single Pipe Support
+
+MiniShell supports one pipe between two commands:
+
+```bash
+ls | wc -l
+ls src | grep .c
+cat README.md | wc -l
+cat README.md | grep MiniShell
+```
+
+Pipe with output redirection is also supported:
+
+```bash
+cat README.md | grep MiniShell > matches.txt
+```
+
+Pipe with input redirection is supported:
+
+```bash
+cat < README.md | wc -l
+```
+
+### Background Processes
+
+MiniShell supports simple background processes using `&`:
+
+```bash
+sleep 10 &
+echo hello > bg_test.txt &
+```
+
+When a command is run in the background, the shell immediately returns to the prompt and displays the background process ID.
 
 Example:
 
 ```bash
-$ ./minishell
-minishell> pwd
-/home/user/minishell
-minishell> echo hello
-hello
-minishell> ls
-main.c  Makefile  README.md
-minishell> exit
+minishell:/home/user/minishell> sleep 10 &
+[background pid: 12345]
+minishell:/home/user/minishell>
 ```
 
 ---
@@ -57,7 +135,28 @@ minishell> exit
 
 ```text
 minishell/
-├── main.c
+├── include/
+│   ├── background.h
+│   ├── builtins.h
+│   ├── executor.h
+│   ├── parser.h
+│   ├── pipes.h
+│   ├── redirection.h
+│   └── shell.h
+│
+├── src/
+│   ├── background.c
+│   ├── builtins.c
+│   ├── executor.c
+│   ├── main.c
+│   ├── parser.c
+│   ├── pipes.c
+│   ├── redirection.c
+│   └── shell.c
+│
+├── tests/
+│   └── test_minishell.sh
+│
 ├── Makefile
 ├── README.md
 └── .gitignore
@@ -65,31 +164,53 @@ minishell/
 
 ---
 
-## How It Works
+## Module Responsibilities
 
-MiniShell follows the basic working model of a Unix shell:
+| File                | Responsibility                                         |
+| ------------------- | ------------------------------------------------------ |
+| `src/main.c`        | Starts the shell                                       |
+| `src/shell.c`       | Handles prompt, input reading, and the main shell loop |
+| `src/parser.c`      | Parses user input into command arguments               |
+| `src/executor.c`    | Decides how commands should be executed                |
+| `src/builtins.c`    | Handles built-in commands                              |
+| `src/redirection.c` | Handles input and output redirection                   |
+| `src/pipes.c`       | Handles single-pipe command execution                  |
+| `src/background.c`  | Detects background process syntax using `&`            |
 
-```text
-1. Print a prompt
-2. Read user input
-3. Parse the input into command and arguments
-4. Create a child process using fork()
-5. Execute the command in the child process using execvp()
-6. Parent process waits for the child using waitpid()
-7. Repeat until the user types exit
-```
+---
+
+## System Calls and C Library Functions Used
+
+| Function/System Call | Purpose                                                       |
+| -------------------- | ------------------------------------------------------------- |
+| `getline()`          | Reads a complete line of input from the user                  |
+| `strtok()`           | Splits user input into tokens                                 |
+| `malloc()`           | Dynamically allocates memory                                  |
+| `free()`             | Releases dynamically allocated memory                         |
+| `fork()`             | Creates a child process                                       |
+| `execvp()`           | Executes an external command                                  |
+| `waitpid()`          | Waits for foreground processes or checks background processes |
+| `pipe()`             | Creates a communication channel between two processes         |
+| `dup()`              | Saves a copy of a file descriptor                             |
+| `dup2()`             | Redirects standard input or output                            |
+| `open()`             | Opens files for redirection                                   |
+| `close()`            | Closes file descriptors                                       |
+| `chdir()`            | Changes the current working directory                         |
+| `getcwd()`           | Gets the current working directory                            |
+| `getenv()`           | Reads environment variables such as `HOME`                    |
+| `perror()`           | Prints system error messages                                  |
 
 ---
 
 ## Build Instructions
 
-To compile the project, run:
+To compile MiniShell, run:
 
 ```bash
 make
 ```
 
-This will create an executable named:
+This creates an executable named:
 
 ```bash
 minishell
@@ -105,20 +226,10 @@ After building the project, run:
 ./minishell
 ```
 
-You should see the shell prompt:
+You should see a prompt similar to:
 
 ```bash
-minishell>
-```
-
-Now you can type commands such as:
-
-```bash
-ls
-pwd
-echo hello
-date
-exit
+minishell:/home/user/minishell>
 ```
 
 ---
@@ -133,54 +244,163 @@ make clean
 
 ---
 
-## System Calls and Functions Used
+## Run Automated Tests
 
-| Function/System Call | Purpose                                             |
-| -------------------- | --------------------------------------------------- |
-| `getline()`          | Reads a complete line of input from the user        |
-| `strtok()`           | Splits the input into command and arguments         |
-| `malloc()`           | Dynamically allocates memory for argument storage   |
-| `free()`             | Releases dynamically allocated memory               |
-| `fork()`             | Creates a child process                             |
-| `execvp()`           | Executes an external command                        |
-| `waitpid()`          | Makes the parent process wait for the child process |
-| `strcmp()`           | Compares command strings                            |
-| `perror()`           | Prints system error messages                        |
+MiniShell includes automated integration tests.
+
+To run the tests:
+
+```bash
+make test
+```
+
+The tests check features such as:
+
+* External command execution
+* Built-in commands
+* Output redirection
+* Append redirection
+* Input redirection
+* Combined input and output redirection
+* Single pipe execution
+* Pipe with output redirection
+* Background process detection
+
+Example test output:
+
+```text
+Running MiniShell tests...
+
+[PASS] external command: echo
+[PASS] built-in command: pwd
+[PASS] built-in command: help
+[PASS] output redirection overwrite
+[PASS] output redirection append
+[PASS] input redirection
+[PASS] input plus output redirection
+[PASS] single pipe
+[PASS] pipe plus output redirection
+[PASS] background process
+
+All tests passed.
+```
 
 ---
 
-## Important Concepts Learned
+## Example Usage
 
-This project demonstrates fundamental concepts of system programming in C:
+```bash
+$ make
+gcc -Wall -Wextra -g -Iinclude src/main.c src/shell.c src/parser.c src/executor.c src/builtins.c src/redirection.c src/pipes.c src/background.c -o minishell
 
-* Process creation
-* Parent and child processes
-* Command execution
-* Linux system calls
-* Dynamic memory management
-* Basic command parsing
-* Error handling
-* Shell loop design
+$ ./minishell
+minishell:/home/user/minishell> pwd
+/home/user/minishell
+
+minishell:/home/user/minishell> echo hello
+hello
+
+minishell:/home/user/minishell> echo hello > output.txt
+
+minishell:/home/user/minishell> cat output.txt
+hello
+
+minishell:/home/user/minishell> echo world >> output.txt
+
+minishell:/home/user/minishell> cat output.txt
+hello
+world
+
+minishell:/home/user/minishell> wc -l < output.txt
+2
+
+minishell:/home/user/minishell> ls src | grep .c
+background.c
+builtins.c
+executor.c
+main.c
+parser.c
+pipes.c
+redirection.c
+shell.c
+
+minishell:/home/user/minishell> sleep 10 &
+[background pid: 12345]
+
+minishell:/home/user/minishell> exit
+```
 
 ---
 
 ## Current Limitations
 
-The current version is an early Phase 1 implementation.
+MiniShell is still under development. The current version has the following limitations:
 
-It does not yet support:
+* The parser requires spaces around special symbols.
 
-* `cd` command
-* Pipes using `|`
-* Input redirection using `<`
-* Output redirection using `>`
-* Append redirection using `>>`
-* Background processes using `&`
-* Signal handling such as `Ctrl+C`
-* Command history
-* Quoted strings such as `"hello world"`
+Works:
 
-These features will be added in future phases.
+```bash
+echo hello > output.txt
+wc -l < names.txt
+ls | grep .c
+sleep 10 &
+```
+
+May not work yet:
+
+```bash
+echo hello>output.txt
+wc -l<names.txt
+ls|grep .c
+sleep 10&
+```
+
+* Only one pipe is currently supported.
+
+Works:
+
+```bash
+cat README.md | wc -l
+```
+
+Not yet supported:
+
+```bash
+cat README.md | grep MiniShell | wc -l
+```
+
+* Built-ins inside pipelines are limited.
+
+This may work because external `pwd` usually exists:
+
+```bash
+pwd | wc -c
+```
+
+But this may not work because `help` is a shell built-in:
+
+```bash
+help | wc -l
+```
+
+* Background pipelines are not fully supported yet.
+
+Simple background commands work:
+
+```bash
+sleep 10 &
+```
+
+But background pipelines are not fully handled yet:
+
+```bash
+ls | grep .c &
+```
+
+* Finished background processes are not yet cleaned using `SIGCHLD`.
+
+This will be handled in a future signal-handling phase.
 
 ---
 
@@ -190,57 +410,49 @@ These features will be added in future phases.
 * [x] Read user input
 * [x] Parse simple commands
 * [x] Execute external commands
-* [x] Add `exit` command
-* [ ] Add built-in commands like `cd`, `pwd`, `help`, and `clear`
-* [ ] Add input and output redirection
-* [ ] Add pipe support
-* [ ] Add background process support
+* [x] Add built-in commands
+* [x] Add modular project structure
+* [x] Add output redirection using `>`
+* [x] Add append redirection using `>>`
+* [x] Add input redirection using `<`
+* [x] Support combined input and output redirection
+* [x] Add single pipe support using `|`
+* [x] Add simple background process support using `&`
+* [x] Add automated integration tests
+* [ ] Add signal handling for `Ctrl+C`
+* [ ] Add `SIGCHLD` handling for background process cleanup
 * [ ] Add command history
-* [ ] Add signal handling
-* [ ] Improve parser to handle quotes and special symbols
-* [ ] Add modular project structure with separate source and header files
+* [ ] Add support for multiple pipes
+* [ ] Improve parser to handle symbols without spaces
+* [ ] Add support for quoted strings
+* [ ] Add support for background pipelines
+* [ ] Add more unit tests for parser and command handling
 
 ---
 
-## Future Improvements
+## Learning Outcomes
 
-Planned improvements include:
+This project demonstrates core concepts of Linux system programming and C development:
 
-* Better command parser
-* Support for multiple pipes
-* File redirection
-* Built-in command system
-* Persistent command history
-* Signal handling using `sigaction()`
-* Background job control
-* Cleaner modular codebase
-* Unit tests for parser and built-ins
-
----
-
-## Example Session
-
-```bash
-$ make
-gcc -Wall -Wextra -g main.c -o minishell
-
-$ ./minishell
-minishell> whoami
-user
-minishell> pwd
-/home/user/minishell
-minishell> echo MiniShell is running
-MiniShell is running
-minishell> ls
-main.c  Makefile  README.md
-minishell> exit
-```
+* Unix process model
+* Parent and child processes
+* Process creation using `fork()`
+* Program execution using `execvp()`
+* Foreground and background process handling
+* File descriptor manipulation
+* Input and output redirection
+* Inter-process communication using pipes
+* Built-in shell command design
+* Modular C project organization
+* Makefile-based build system
+* Bash-based integration testing
+* Error handling in system-level programs
 
 ---
 
 ## Requirements
 
-This project requires a Unix-like environment.
+MiniShell requires a Unix-like environment.
 
 Recommended environments:
 
@@ -251,10 +463,10 @@ Recommended environments:
 
 Not recommended:
 
-* Native Windows CMD
+* Native Windows Command Prompt
 * Native Windows PowerShell
 
-This is because the project uses Unix-specific system calls such as `fork()`, `execvp()`, and `waitpid()`.
+This project uses Unix-specific system calls such as `fork()`, `execvp()`, `waitpid()`, `pipe()`, and `dup2()`.
 
 ---
 
@@ -266,5 +478,6 @@ Satvik Miglani
 
 ## License
 
-This project is currently for learning and portfolio development.
+This project is currently created for learning and portfolio development.
+
 A license may be added later.
