@@ -15,6 +15,9 @@ The goal of MiniShell is to build a small but well-structured shell that support
 * Custom shell prompt
 * Displays the current working directory in the prompt
 * Reads user input using `getline()`
+* Handles EOF / Ctrl+D cleanly
+* Trims leading and trailing whitespace before execution
+* Treats tabs and other standard whitespace as argument separators
 * Parses simple commands and arguments
 * Executes external Linux commands
 * Handles empty input safely
@@ -158,7 +161,8 @@ minishell/
 │   └── test_minishell.sh
 │
 ├── docs/
-│   └── PHASE_0_BUILD_RELIABILITY.md
+│   ├── PHASE_0_BUILD_RELIABILITY.md
+│   └── PHASE_1_STRONG_INPUT_HANDLING.md
 │
 ├── Makefile
 ├── README.md
@@ -188,6 +192,8 @@ minishell/
 | Function/System Call | Purpose                                                       |
 | -------------------- | ------------------------------------------------------------- |
 | `getline()`          | Reads a complete line of input from the user                  |
+| `memmove()`           | Normalizes input after trimming leading whitespace            |
+| `strlen()`            | Measures input length during cleanup                          |
 | `strtok()`           | Splits user input into tokens                                 |
 | `malloc()`           | Dynamically allocates memory                                  |
 | `free()`             | Releases dynamically allocated memory                         |
@@ -203,6 +209,17 @@ minishell/
 | `getcwd()`           | Gets the current working directory                            |
 | `getenv()`           | Reads environment variables such as `HOME`                    |
 | `perror()`           | Prints system error messages                                  |
+
+---
+
+## Phase Documentation
+
+Detailed upgrade notes are available in:
+
+```text
+docs/PHASE_0_BUILD_RELIABILITY.md
+docs/PHASE_1_STRONG_INPUT_HANDLING.md
+```
 
 ---
 

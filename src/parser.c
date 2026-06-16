@@ -15,13 +15,13 @@ char **parse_input(char *line)
     }
 
     int index = 0;
-    char *token = strtok(line, " ");
+    char *token = strtok(line, " \t\r\v\f");
 
     while (token != NULL && index < MAX_ARGS - 1)
     {
         args[index] = token;
         index++;
-        token = strtok(NULL, " ");
+        token = strtok(NULL, " \t\r\v\f");
     }
 
     args[index] = NULL;

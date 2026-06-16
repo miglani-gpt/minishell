@@ -86,6 +86,37 @@ echo
 # Basic external command
 assert_contains "external command: echo" "echo hello" "hello"
 
+# Blank and whitespace-only input should not be executed as commands
+output="$(printf "\n   \n\t\nexit\n" | "$MINISHELL" 2>&1 | clean_prompt_output)"
+if echo "$output" | grep -qi "not found\|permission denied\|syntax error"; then
+    print_fail "blank and whitespace-only input" "no command execution error" "$output"
+else
+    print_pass "blank and whitespace-only input"
+fi
+
+# Leading and trailing spaces should be ignored
+assert_contains "leading and trailing whitespace" "   echo trimmed   " "trimmed"
+
+# Tabs should behave like spaces between arguments
+tab_command=$'echo\twith\ttabs'
+assert_contains "tab-separated arguments" "$tab_command" "with tabs"
+
+# CRLF input should be accepted cleanly
+output="$(printf "echo crlf\r\nexit\r\n" | "$MINISHELL" 2>&1 | clean_prompt_output)"
+if echo "$output" | grep -q "crlf"; then
+    print_pass "CRLF line ending input"
+else
+    print_fail "CRLF line ending input" "crlf" "$output"
+fi
+
+# EOF / Ctrl+D should exit cleanly
+output="$(printf "" | "$MINISHELL" 2>&1 | clean_prompt_output)"
+if echo "$output" | grep -q "exit"; then
+    print_pass "EOF exits cleanly"
+else
+    print_fail "EOF exits cleanly" "exit" "$output"
+fi
+
 # pwd built-in
 assert_contains "built-in command: pwd" "pwd" "$PROJECT_ROOT"
 
