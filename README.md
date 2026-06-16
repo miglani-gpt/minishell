@@ -4,7 +4,7 @@ MiniShell is a modular Unix-like command-line shell written in C.
 
 This project is built to understand how traditional Unix shells work internally using low-level Linux system calls such as `fork()`, `execvp()`, `waitpid()`, `pipe()`, `dup2()`, `open()`, and `chdir()`.
 
-The goal of MiniShell is to build a small but well-structured shell that supports command execution, built-in commands, input/output redirection, single-pipe command chaining, background processes, and automated testing.
+The goal of MiniShell is to build a small but well-structured shell that supports command execution, built-in commands, input/output redirection, multi-pipe command chaining, background processes, and automated testing.
 
 ---
 
@@ -18,10 +18,7 @@ The goal of MiniShell is to build a small but well-structured shell that support
 * Handles EOF / Ctrl+D cleanly
 * Trims leading and trailing whitespace before execution
 * Treats tabs and other standard whitespace as argument separators
-* Parses commands using a lexer and parser instead of `strtok()`
-* Stores parsed commands in command/redirection data structures
-* Supports quoted strings as single arguments
-* Supports shell operators without surrounding spaces
+* Parses simple commands and arguments
 * Executes external Linux commands
 * Handles empty input safely
 * Exits cleanly using the `exit` command
@@ -93,27 +90,31 @@ sort < names.txt > sorted.txt
 wc -l < names.txt >> count.txt
 ```
 
-### Single Pipe Support
+### Multi-Pipe Support
 
-MiniShell supports one pipe between two commands:
+MiniShell supports pipe chains with two or more commands:
 
 ```bash
 ls | wc -l
 ls src | grep .c
 cat README.md | wc -l
 cat README.md | grep MiniShell
+cat README.md | grep MiniShell | wc -l
+printf 'a\nb\nc\n' | cat | wc -l
 ```
 
-Pipe with output redirection is also supported:
+Pipelines with output redirection are also supported:
 
 ```bash
 cat README.md | grep MiniShell > matches.txt
+cat README.md | grep MiniShell | wc -l > match_count.txt
 ```
 
-Pipe with input redirection is supported:
+Pipelines with input redirection are supported:
 
 ```bash
 cat < README.md | wc -l
+cat < README.md | grep MiniShell | wc -l
 ```
 
 ### Background Processes
@@ -144,9 +145,7 @@ minishell/
 ├── include/
 │   ├── background.h
 │   ├── builtins.h
-│   ├── command.h
 │   ├── executor.h
-│   ├── lexer.h
 │   ├── parser.h
 │   ├── pipes.h
 │   ├── redirection.h
@@ -155,9 +154,7 @@ minishell/
 ├── src/
 │   ├── background.c
 │   ├── builtins.c
-│   ├── command.c
 │   ├── executor.c
-│   ├── lexer.c
 │   ├── main.c
 │   ├── parser.c
 │   ├── pipes.c
@@ -169,9 +166,7 @@ minishell/
 │
 ├── docs/
 │   ├── PHASE_0_BUILD_RELIABILITY.md
-│   ├── PHASE_1_STRONG_INPUT_HANDLING.md
-│   ├── PHASE_2_LEXER_PARSER.md
-│   └── PHASE_3_COMMAND_STRUCTURES.md
+│   └── PHASE_1_STRONG_INPUT_HANDLING.md
 │
 ├── Makefile
 ├── README.md
@@ -187,13 +182,11 @@ minishell/
 | ------------------- | ------------------------------------------------------ |
 | `src/main.c`        | Starts the shell                                       |
 | `src/shell.c`       | Handles prompt, input reading, and the main shell loop |
-| `src/lexer.c`       | Converts raw input into shell tokens                   |
-| `src/parser.c`      | Builds structured command lists from tokens            |
-| `src/command.c`     | Owns command/redirection structures and cleanup        |
-| `src/executor.c`    | Decides how structured commands should be executed     |
+| `src/parser.c`      | Parses user input into command arguments               |
+| `src/executor.c`    | Decides how commands should be executed                |
 | `src/builtins.c`    | Handles built-in commands                              |
-| `src/redirection.c` | Applies command-attached input and output redirections |
-| `src/pipes.c`       | Handles single-pipe command execution                  |
+| `src/redirection.c` | Handles input and output redirection                   |
+| `src/pipes.c`       | Handles two-command and multi-command pipeline execution |
 | `src/background.c`  | Detects background process syntax using `&`            |
 
 ---
@@ -205,13 +198,13 @@ minishell/
 | `getline()`          | Reads a complete line of input from the user                  |
 | `memmove()`           | Normalizes input after trimming leading whitespace            |
 | `strlen()`            | Measures input length during cleanup                          |
-| custom lexer/parser | Splits input into shell-aware tokens and command structures    |
+| `strtok()`           | Splits user input into tokens                                 |
 | `malloc()`           | Dynamically allocates memory                                  |
 | `free()`             | Releases dynamically allocated memory                         |
 | `fork()`             | Creates a child process                                       |
 | `execvp()`           | Executes an external command                                  |
 | `waitpid()`          | Waits for foreground processes or checks background processes |
-| `pipe()`             | Creates a communication channel between two processes         |
+| `pipe()`             | Creates communication channels between pipeline processes      |
 | `dup()`              | Saves a copy of a file descriptor                             |
 | `dup2()`             | Redirects standard input or output                            |
 | `open()`             | Opens files for redirection                                   |
@@ -230,38 +223,9 @@ Detailed upgrade notes are available in:
 ```text
 docs/PHASE_0_BUILD_RELIABILITY.md
 docs/PHASE_1_STRONG_INPUT_HANDLING.md
-docs/PHASE_2_LEXER_PARSER.md
-docs/PHASE_3_COMMAND_STRUCTURES.md
 ```
 
 ---
-
-## Phase 3 Architecture Update
-
-MiniShell now uses structured parsing instead of passing one flat `char **args` array through the whole program.
-
-A parsed line is represented as:
-
-```text
-t_parsed_input
-├── commands       linked list of t_command
-├── command_count  number of commands in the chain
-└── is_background  whether the final token was &
-```
-
-Each command stores only real executable arguments in `argv`. Redirections are stored separately:
-
-```text
-t_command
-├── argv           command and normal arguments
-├── argc           argument count
-├── redirections   linked list of t_redirection
-└── next           next command after a pipe
-```
-
-This is cleaner than removing `<`, `>`, `>>`, and filenames from `argv` during execution. It also prepares the project for Phase 4 multi-pipe execution.
-
-Current limitation: the parser can store command chains longer than two commands, but execution still intentionally supports only one pipe until Phase 4.
 
 ## Build Instructions
 
@@ -351,8 +315,12 @@ The tests check features such as:
 * Append redirection
 * Input redirection
 * Combined input and output redirection
-* Single pipe execution
-* Pipe with output redirection
+* Quote-aware parsing
+* Operators without surrounding spaces
+* Single-pipe execution
+* Multi-pipe execution
+* Pipeline redirection behavior
+* Built-ins inside pipelines
 * Background process detection
 
 Example test output:
@@ -369,7 +337,15 @@ Running MiniShell tests...
 [PASS] input plus output redirection
 [PASS] single pipe
 [PASS] pipe plus output redirection
+[PASS] multi-pipe command chain
+[PASS] no-space multi-pipe command chain
+[PASS] built-in inside pipeline
+[PASS] multi-pipe plus output redirection
 [PASS] background process
+
+Test summary:
+Passed: 38
+Failed: 0
 
 All tests passed.
 ```
@@ -403,15 +379,13 @@ world
 minishell:/home/user/minishell> wc -l < output.txt
 2
 
-minishell:/home/user/minishell> ls src | grep .c
-background.c
-builtins.c
-executor.c
-main.c
-parser.c
-pipes.c
-redirection.c
-shell.c
+minishell:/home/user/minishell> ls src | grep .c | wc -l
+10
+
+minishell:/home/user/minishell> cat < README.md | grep MiniShell | wc -l > count.txt
+
+minishell:/home/user/minishell> cat count.txt
+12
 
 minishell:/home/user/minishell> sleep 10 &
 [background pid: 12345]
@@ -425,54 +399,6 @@ minishell:/home/user/minishell> exit
 
 MiniShell is still under development. The current version has the following limitations:
 
-* The parser requires spaces around special symbols.
-
-Works:
-
-```bash
-echo hello > output.txt
-wc -l < names.txt
-ls | grep .c
-sleep 10 &
-```
-
-May not work yet:
-
-```bash
-echo hello>output.txt
-wc -l<names.txt
-ls|grep .c
-sleep 10&
-```
-
-* Only one pipe is currently supported.
-
-Works:
-
-```bash
-cat README.md | wc -l
-```
-
-Not yet supported:
-
-```bash
-cat README.md | grep MiniShell | wc -l
-```
-
-* Built-ins inside pipelines are limited.
-
-This may work because external `pwd` usually exists:
-
-```bash
-pwd | wc -c
-```
-
-But this may not work because `help` is a shell built-in:
-
-```bash
-help | wc -l
-```
-
 * Background pipelines are not fully supported yet.
 
 Simple background commands work:
@@ -481,15 +407,36 @@ Simple background commands work:
 sleep 10 &
 ```
 
-But background pipelines are not fully handled yet:
+But background pipelines are intentionally rejected with a clear message:
 
 ```bash
-ls | grep .c &
+ls | grep .c | wc -l &
 ```
 
-* Finished background processes are not yet cleaned using `SIGCHLD`.
+* Finished background processes are not yet fully cleaned using `SIGCHLD`.
 
-This will be handled in a future signal-handling phase.
+This will be handled in a future signal-handling/background-process phase.
+
+* Environment variable expansion is not implemented yet.
+
+Not yet supported:
+
+```bash
+echo $HOME
+echo "$PATH"
+echo $?
+```
+
+* Advanced shell grammar is not implemented yet.
+
+Not yet supported:
+
+```bash
+cmd1 && cmd2
+cmd1 || cmd2
+cmd1; cmd2
+cat << EOF
+```
 
 ---
 
@@ -506,16 +453,16 @@ This will be handled in a future signal-handling phase.
 * [x] Add input redirection using `<`
 * [x] Support combined input and output redirection
 * [x] Add single pipe support using `|`
+* [x] Add support for multiple pipes
 * [x] Add simple background process support using `&`
 * [x] Add automated integration tests
 * [ ] Add signal handling for `Ctrl+C`
 * [ ] Add `SIGCHLD` handling for background process cleanup
 * [ ] Add command history
-* [ ] Add support for multiple pipes
-* [ ] Improve parser to handle symbols without spaces
-* [ ] Add support for quoted strings
+* [x] Improve parser to handle symbols without spaces
+* [x] Add support for quoted strings
 * [ ] Add support for background pipelines
-* [ ] Add more unit tests for parser and command handling
+* [x] Add more unit tests for parser and command handling
 
 ---
 

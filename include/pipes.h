@@ -3,6 +3,6 @@
 
 #include "command.h"
 
-void execute_piped_commands(t_command *commands);
+void execute_piped_commands(t_command *commands, int command_count);
 
 #endif

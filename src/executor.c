@@ -98,11 +98,5 @@ void execute_parsed_input(t_parsed_input *parsed)
         return;
     }
 
-    if (parsed->command_count == 2)
-    {
-        execute_piped_commands(parsed->commands);
-        return;
-    }
-
-    fprintf(stderr, "minishell: multiple pipes are not supported yet\n");
+    execute_piped_commands(parsed->commands, parsed->command_count);
 }

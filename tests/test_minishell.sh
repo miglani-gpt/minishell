@@ -218,12 +218,34 @@ else
     print_fail "structured right-side pipe input redirection" "4" "$right_count"
 fi
 
-# Phase 3 intentionally stores multiple commands, but Phase 4 will execute N-pipe chains
-output="$(printf "printf a|cat|wc -c\nexit\n" | "$MINISHELL" 2>&1 | clean_prompt_output)"
-if echo "$output" | grep -q "multiple pipes are not supported yet"; then
-    print_pass "structured parser detects multi-pipe command chain"
+# Phase 4: multi-pipe command chains
+assert_contains "multi-pipe command chain" "printf 'a\nb\nc\n' | cat | wc -l" "3"
+assert_contains "no-space multi-pipe command chain" "printf abc|cat|wc -c" "3"
+assert_contains "built-in inside pipeline" "pwd | wc -l" "1"
+
+run_shell "cat $TEST_DIR/names.txt | grep banana | wc -l > $TEST_DIR/multi_pipe_count.txt" >/dev/null
+multi_pipe_count="$(tr -d ' ' < "$TEST_DIR/multi_pipe_count.txt")"
+if [ "$multi_pipe_count" = "1" ]; then
+    print_pass "multi-pipe plus output redirection"
 else
-    print_fail "structured parser detects multi-pipe command chain" "multiple pipes are not supported yet" "$output"
+    print_fail "multi-pipe plus output redirection" "1" "$multi_pipe_count"
+fi
+
+run_shell "cat < $TEST_DIR/names.txt | grep mango | wc -c > $TEST_DIR/multi_pipe_redir_count.txt" >/dev/null
+multi_pipe_redir_count="$(tr -d ' ' < "$TEST_DIR/multi_pipe_redir_count.txt")"
+if [ "$multi_pipe_redir_count" = "6" ]; then
+    print_pass "multi-pipe with first input and final output redirection"
+else
+    print_fail "multi-pipe with first input and final output redirection" "6" "$multi_pipe_redir_count"
+fi
+
+output="$(printf "printf a|cat|wc -c &
+exit
+" | "$MINISHELL" 2>&1 | clean_prompt_output)"
+if echo "$output" | grep -q "background execution not supported for pipelines yet"; then
+    print_pass "background pipeline still rejected clearly"
+else
+    print_fail "background pipeline still rejected clearly" "background execution not supported for pipelines yet" "$output"
 fi
 
 # Parser should reject malformed syntax cleanly
