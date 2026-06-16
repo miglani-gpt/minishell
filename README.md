@@ -157,8 +157,12 @@ minishell/
 ├── tests/
 │   └── test_minishell.sh
 │
+├── docs/
+│   └── PHASE_0_BUILD_RELIABILITY.md
+│
 ├── Makefile
 ├── README.md
+├── .editorconfig
 └── .gitignore
 ```
 
@@ -216,6 +220,26 @@ This creates an executable named:
 minishell
 ```
 
+Useful build targets:
+
+| Command | Purpose |
+| ------- | ------- |
+| `make` | Build the shell |
+| `make run` | Build and run the shell |
+| `make test` | Build and run automated tests |
+| `make debug` | Rebuild with debug settings |
+| `make sanitize` | Rebuild with AddressSanitizer and UBSan |
+| `make clean` | Remove object files |
+| `make fclean` | Remove object files and executable |
+| `make re` | Full rebuild |
+| `make help` | Show available build targets |
+
+Phase 0 build-reliability notes are documented in:
+
+```bash
+docs/PHASE_0_BUILD_RELIABILITY.md
+```
+
 ---
 
 ## Run Instructions
@@ -252,6 +276,14 @@ To run the tests:
 
 ```bash
 make test
+```
+
+The Makefile runs the test script with `bash`, so tests still work even if executable permissions are lost while sharing the project as a zip file.
+
+The test script can also be run directly:
+
+```bash
+bash tests/test_minishell.sh
 ```
 
 The tests check features such as:

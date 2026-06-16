@@ -62,9 +62,19 @@ assert_file_content() {
     fi
 }
 
-echo "Building MiniShell..."
-make -C "$PROJECT_ROOT" clean >/dev/null
-make -C "$PROJECT_ROOT" >/dev/null
+BUILD_BEFORE_TEST=1
+
+if [ "${1:-}" = "--no-build" ]; then
+    BUILD_BEFORE_TEST=0
+fi
+
+if [ "$BUILD_BEFORE_TEST" -eq 1 ]; then
+    echo "Building MiniShell..."
+    make -C "$PROJECT_ROOT" fclean >/dev/null
+    make -C "$PROJECT_ROOT" >/dev/null
+else
+    echo "Using existing MiniShell build..."
+fi
 
 rm -rf "$TEST_DIR"
 mkdir -p "$TEST_DIR"

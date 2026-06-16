@@ -1,18 +1,35 @@
-# Compiled binary
+# Build outputs
 minishell
-
-# Object files
+build/
 *.o
-
-# Debug files
 *.out
+*.a
+*.so
+*.dSYM/
+
+# Debug/profiling files
+*.log
+*.gcda
+*.gcno
+*.gcov
+core
+core.*
+vgcore.*
 
 # Test generated files
 tests/test_files/
 
-# Editor files
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Editor and IDE files
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
 # OS files
 .DS_Store
