@@ -134,11 +134,14 @@ void shell_loop(void)
             continue;
         }
 
-        char **args = parse_input(line);
+        t_parsed_input parsed = parse_input(line);
 
-        execute_command(args);
+        if (parsed.args != NULL)
+        {
+            execute_command(parsed.args);
+        }
 
-        free(args);
+        free_parsed_input(&parsed);
         free(line);
     }
 }

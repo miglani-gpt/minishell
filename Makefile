@@ -12,6 +12,7 @@ TEST_SCRIPT := tests/test_minishell.sh
 SRCS := \
 	$(SRC_DIR)/main.c \
 	$(SRC_DIR)/shell.c \
+	$(SRC_DIR)/lexer.c \
 	$(SRC_DIR)/parser.c \
 	$(SRC_DIR)/executor.c \
 	$(SRC_DIR)/builtins.c \

@@ -156,6 +156,50 @@ else
     print_fail "background process" "background pid" "$output"
 fi
 
+# Quoted strings should stay as one argument
+assert_contains "double-quoted string" "echo \"hello world\"" "hello world"
+assert_contains "single-quoted string" "echo 'single quoted text'" "single quoted text"
+
+# Empty quoted arguments should be preserved
+assert_contains "empty quoted argument" "printf 'x%sx\\n' \"\"" "xx"
+
+# Operators inside quotes should not be treated as shell operators
+assert_contains "operator inside quotes" "echo \"left|right\"" "left|right"
+
+# Operators should work without surrounding spaces
+run_shell "echo nospace>$TEST_DIR/no_space_output.txt" >/dev/null
+assert_file_content "no-space output redirection" "$TEST_DIR/no_space_output.txt" "nospace"
+
+run_shell "echo appended>>$TEST_DIR/no_space_output.txt" >/dev/null
+expected_no_space_append="$(printf "nospace\nappended")"
+assert_file_content "no-space append redirection" "$TEST_DIR/no_space_output.txt" "$expected_no_space_append"
+
+assert_contains "no-space input redirection" "wc -l<$TEST_DIR/names.txt" "3"
+assert_contains "no-space pipe" "printf abc|wc -c" "3"
+
+# Background marker should work even when attached to the previous word
+output="$(run_shell "sleep 1&" | clean_prompt_output)"
+if echo "$output" | grep -q "background pid"; then
+    print_pass "no-space background process"
+else
+    print_fail "no-space background process" "background pid" "$output"
+fi
+
+# Parser should reject malformed syntax cleanly
+output="$(printf "echo broken >\nexit\n" | "$MINISHELL" 2>&1 | clean_prompt_output)"
+if echo "$output" | grep -q "expected file after '>'"; then
+    print_pass "parser rejects missing redirection target"
+else
+    print_fail "parser rejects missing redirection target" "expected file after '>'" "$output"
+fi
+
+output="$(printf "echo \"unfinished\nexit\n" | "$MINISHELL" 2>&1 | clean_prompt_output)"
+if echo "$output" | grep -q "unclosed"; then
+    print_pass "parser rejects unclosed quote"
+else
+    print_fail "parser rejects unclosed quote" "unclosed quote error" "$output"
+fi
+
 echo
 echo "Test summary:"
 echo "Passed: $pass_count"
