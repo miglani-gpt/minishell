@@ -1,156 +1,116 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <string.h>
 
 #include "redirection.h"
 
-static void remove_redirection_tokens(char **args, int index)
+static int save_descriptor_once(int descriptor, int *saved_descriptor)
 {
-    int j = index;
-
-    while (args[j + 2] != NULL)
+    if (saved_descriptor == NULL || *saved_descriptor >= 0)
     {
-        args[j] = args[j + 2];
-        j++;
+        return 0;
     }
 
-    args[j] = NULL;
-}
-
-int setup_output_redirection(char **args, int *saved_stdout)
-{
-    int i = 0;
-
-    while (args[i] != NULL)
+    *saved_descriptor = dup(descriptor);
+    if (*saved_descriptor < 0)
     {
-        if (strcmp(args[i], ">") == 0 || strcmp(args[i], ">>") == 0)
-        {
-            int flags;
-
-            if (args[i + 1] == NULL)
-            {
-                fprintf(stderr, "minishell: syntax error: expected file after '%s'\n", args[i]);
-                return -1;
-            }
-
-            if (strcmp(args[i], ">") == 0)
-            {
-                flags = O_WRONLY | O_CREAT | O_TRUNC;
-            }
-            else
-            {
-                flags = O_WRONLY | O_CREAT | O_APPEND;
-            }
-
-            int fd = open(args[i + 1], flags, 0644);
-
-            if (fd < 0)
-            {
-                perror("minishell: open");
-                return -1;
-            }
-
-            if (saved_stdout != NULL)
-            {
-                *saved_stdout = dup(STDOUT_FILENO);
-
-                if (*saved_stdout < 0)
-                {
-                    perror("minishell: dup");
-                    close(fd);
-                    return -1;
-                }
-            }
-
-            if (dup2(fd, STDOUT_FILENO) < 0)
-            {
-                perror("minishell: dup2");
-                close(fd);
-                return -1;
-            }
-
-            close(fd);
-
-            remove_redirection_tokens(args, i);
-
-            return 1;
-        }
-
-        i++;
+        perror("minishell: dup");
+        return -1;
     }
 
     return 0;
 }
 
-void restore_output_redirection(int saved_stdout)
+static int open_redirection_file(t_redirection *redirection)
 {
-    if (saved_stdout >= 0)
-    {
-        if (dup2(saved_stdout, STDOUT_FILENO) < 0)
-        {
-            perror("minishell: restore stdout");
-        }
+    int flags;
 
-        close(saved_stdout);
+    if (redirection->type == REDIR_INPUT)
+    {
+        return open(redirection->filename, O_RDONLY);
     }
+
+    if (redirection->type == REDIR_APPEND)
+    {
+        flags = O_WRONLY | O_CREAT | O_APPEND;
+    }
+    else
+    {
+        flags = O_WRONLY | O_CREAT | O_TRUNC;
+    }
+
+    return open(redirection->filename, flags, 0644);
 }
 
-int setup_input_redirection(char **args, int *saved_stdin)
+static int apply_single_redirection(t_redirection *redirection,
+                                    int *saved_stdin,
+                                    int *saved_stdout)
 {
-    int i = 0;
+    int fd;
+    int target_fd;
 
-    while (args[i] != NULL)
+    fd = open_redirection_file(redirection);
+    if (fd < 0)
     {
-        if (strcmp(args[i], "<") == 0)
+        perror("minishell: open");
+        return -1;
+    }
+
+    if (redirection->type == REDIR_INPUT)
+    {
+        target_fd = STDIN_FILENO;
+        if (save_descriptor_once(STDIN_FILENO, saved_stdin) == -1)
         {
-            if (args[i + 1] == NULL)
-            {
-                fprintf(stderr, "minishell: syntax error: expected file after '<'\n");
-                return -1;
-            }
-
-            int fd = open(args[i + 1], O_RDONLY);
-
-            if (fd < 0)
-            {
-                perror("minishell: open");
-                return -1;
-            }
-
-            if (saved_stdin != NULL)
-            {
-                *saved_stdin = dup(STDIN_FILENO);
-
-                if (*saved_stdin < 0)
-                {
-                    perror("minishell: dup");
-                    close(fd);
-                    return -1;
-                }
-            }
-
-            if (dup2(fd, STDIN_FILENO) < 0)
-            {
-                perror("minishell: dup2");
-                close(fd);
-                return -1;
-            }
-
             close(fd);
+            return -1;
+        }
+    }
+    else
+    {
+        target_fd = STDOUT_FILENO;
+        if (save_descriptor_once(STDOUT_FILENO, saved_stdout) == -1)
+        {
+            close(fd);
+            return -1;
+        }
+    }
 
-            remove_redirection_tokens(args, i);
+    if (dup2(fd, target_fd) < 0)
+    {
+        perror("minishell: dup2");
+        close(fd);
+        return -1;
+    }
 
-            return 1;
+    close(fd);
+    return 0;
+}
+
+int apply_redirections(t_redirection *redirections, int *saved_stdin, int *saved_stdout)
+{
+    if (saved_stdin != NULL)
+    {
+        *saved_stdin = -1;
+    }
+    if (saved_stdout != NULL)
+    {
+        *saved_stdout = -1;
+    }
+
+    while (redirections != NULL)
+    {
+        if (apply_single_redirection(redirections, saved_stdin, saved_stdout) == -1)
+        {
+            return -1;
         }
 
-        i++;
+        redirections = redirections->next;
     }
 
     return 0;
 }
 
-void restore_input_redirection(int saved_stdin)
+void restore_redirections(int saved_stdin, int saved_stdout)
 {
     if (saved_stdin >= 0)
     {
@@ -158,7 +118,15 @@ void restore_input_redirection(int saved_stdin)
         {
             perror("minishell: restore stdin");
         }
-
         close(saved_stdin);
+    }
+
+    if (saved_stdout >= 0)
+    {
+        if (dup2(saved_stdout, STDOUT_FILENO) < 0)
+        {
+            perror("minishell: restore stdout");
+        }
+        close(saved_stdout);
     }
 }

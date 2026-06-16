@@ -136,10 +136,7 @@ void shell_loop(void)
 
         t_parsed_input parsed = parse_input(line);
 
-        if (parsed.args != NULL)
-        {
-            execute_command(parsed.args);
-        }
+        execute_parsed_input(&parsed);
 
         free_parsed_input(&parsed);
         free(line);

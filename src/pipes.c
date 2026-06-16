@@ -2,49 +2,75 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/wait.h>
-#include <string.h>
 
 #include "pipes.h"
 #include "redirection.h"
 
-int has_pipe(char **args)
+static void execute_left_pipe_child(t_command *command, int pipe_fd[2])
 {
-    int i = 0;
+    close(pipe_fd[0]);
 
-    while (args[i] != NULL)
+    if (dup2(pipe_fd[1], STDOUT_FILENO) < 0)
     {
-        if (strcmp(args[i], "|") == 0)
-        {
-            return i;
-        }
-
-        i++;
+        perror("minishell: dup2");
+        close(pipe_fd[1]);
+        exit(EXIT_FAILURE);
     }
 
-    return -1;
+    close(pipe_fd[1]);
+
+    if (apply_redirections(command->redirections, NULL, NULL) == -1)
+    {
+        exit(EXIT_FAILURE);
+    }
+
+    if (execvp(command->argv[0], command->argv) == -1)
+    {
+        perror("minishell");
+        exit(EXIT_FAILURE);
+    }
 }
 
-void execute_piped_command(char **args)
+static void execute_right_pipe_child(t_command *command, int pipe_fd[2])
 {
-    int pipe_index = has_pipe(args);
+    close(pipe_fd[1]);
 
-    if (pipe_index == -1)
+    if (dup2(pipe_fd[0], STDIN_FILENO) < 0)
     {
-        return;
+        perror("minishell: dup2");
+        close(pipe_fd[0]);
+        exit(EXIT_FAILURE);
     }
 
-    if (pipe_index == 0 || args[pipe_index + 1] == NULL)
+    close(pipe_fd[0]);
+
+    if (apply_redirections(command->redirections, NULL, NULL) == -1)
     {
-        fprintf(stderr, "minishell: syntax error near unexpected token '|'\n");
-        return;
+        exit(EXIT_FAILURE);
     }
 
-    args[pipe_index] = NULL;
+    if (execvp(command->argv[0], command->argv) == -1)
+    {
+        perror("minishell");
+        exit(EXIT_FAILURE);
+    }
+}
 
-    char **left_command = args;
-    char **right_command = &args[pipe_index + 1];
-
+void execute_piped_commands(t_command *commands)
+{
+    t_command *left_command;
+    t_command *right_command;
     int pipe_fd[2];
+    pid_t pid1;
+    pid_t pid2;
+
+    if (commands == NULL || commands->next == NULL)
+    {
+        return;
+    }
+
+    left_command = commands;
+    right_command = commands->next;
 
     if (pipe(pipe_fd) == -1)
     {
@@ -52,8 +78,7 @@ void execute_piped_command(char **args)
         return;
     }
 
-    pid_t pid1 = fork();
-
+    pid1 = fork();
     if (pid1 < 0)
     {
         perror("minishell: fork");
@@ -64,37 +89,10 @@ void execute_piped_command(char **args)
 
     if (pid1 == 0)
     {
-        /*
-         * Child 1:
-         * Runs the left command.
-         * Its stdout goes into the pipe.
-         */
-
-        close(pipe_fd[0]);
-
-        if (dup2(pipe_fd[1], STDOUT_FILENO) < 0)
-        {
-            perror("minishell: dup2");
-            close(pipe_fd[1]);
-            exit(EXIT_FAILURE);
-        }
-
-        close(pipe_fd[1]);
-
-        if (setup_input_redirection(left_command, NULL) == -1)
-        {
-            exit(EXIT_FAILURE);
-        }
-
-        if (execvp(left_command[0], left_command) == -1)
-        {
-            perror("minishell");
-            exit(EXIT_FAILURE);
-        }
+        execute_left_pipe_child(left_command, pipe_fd);
     }
 
-    pid_t pid2 = fork();
-
+    pid2 = fork();
     if (pid2 < 0)
     {
         perror("minishell: fork");
@@ -106,33 +104,7 @@ void execute_piped_command(char **args)
 
     if (pid2 == 0)
     {
-        /*
-         * Child 2:
-         * Runs the right command.
-         * Its stdin comes from the pipe.
-         */
-
-        close(pipe_fd[1]);
-
-        if (dup2(pipe_fd[0], STDIN_FILENO) < 0)
-        {
-            perror("minishell: dup2");
-            close(pipe_fd[0]);
-            exit(EXIT_FAILURE);
-        }
-
-        close(pipe_fd[0]);
-
-        if (setup_output_redirection(right_command, NULL) == -1)
-        {
-            exit(EXIT_FAILURE);
-        }
-
-        if (execvp(right_command[0], right_command) == -1)
-        {
-            perror("minishell");
-            exit(EXIT_FAILURE);
-        }
+        execute_right_pipe_child(right_command, pipe_fd);
     }
 
     close(pipe_fd[0]);

@@ -185,6 +185,47 @@ else
     print_fail "no-space background process" "background pid" "$output"
 fi
 
+
+# Phase 3: structured command data should keep argv separate from redirection metadata
+run_shell "printf '%s\n' clean > $TEST_DIR/argv_clean.txt" >/dev/null
+assert_file_content "structured argv excludes redirection tokens" "$TEST_DIR/argv_clean.txt" "clean"
+
+# Built-in redirection should use command redirection metadata and then restore shell stdout
+run_shell "pwd > $TEST_DIR/pwd_redirect.txt" >/dev/null
+assert_file_content "structured built-in output redirection" "$TEST_DIR/pwd_redirect.txt" "$PROJECT_ROOT"
+
+# Multiple output redirections should be applied in command order; the last one receives stdout
+rm -f "$TEST_DIR/first_redirect.txt" "$TEST_DIR/second_redirect.txt"
+run_shell "printf final > $TEST_DIR/first_redirect.txt > $TEST_DIR/second_redirect.txt" >/dev/null
+assert_file_content "structured multiple output redirections final target" "$TEST_DIR/second_redirect.txt" "final"
+if [ -f "$TEST_DIR/first_redirect.txt" ] && [ ! -s "$TEST_DIR/first_redirect.txt" ]; then
+    print_pass "structured multiple output redirections creates earlier target"
+else
+    print_fail "structured multiple output redirections creates earlier target" "empty first redirection file" "missing or non-empty file"
+fi
+
+# Redirections should attach to the correct side of a pipe
+run_shell "cat < $TEST_DIR/names.txt | grep mango > $TEST_DIR/pipe_structured.txt" >/dev/null
+assert_file_content "structured pipe side redirections" "$TEST_DIR/pipe_structured.txt" "mango"
+
+# A right-side input redirection should belong to the right command, not the left command
+printf "abcd" > "$TEST_DIR/right_input.txt"
+run_shell "printf pipe | wc -c < $TEST_DIR/right_input.txt > $TEST_DIR/right_count.txt" >/dev/null
+right_count="$(tr -d ' ' < "$TEST_DIR/right_count.txt")"
+if [ "$right_count" = "4" ]; then
+    print_pass "structured right-side pipe input redirection"
+else
+    print_fail "structured right-side pipe input redirection" "4" "$right_count"
+fi
+
+# Phase 3 intentionally stores multiple commands, but Phase 4 will execute N-pipe chains
+output="$(printf "printf a|cat|wc -c\nexit\n" | "$MINISHELL" 2>&1 | clean_prompt_output)"
+if echo "$output" | grep -q "multiple pipes are not supported yet"; then
+    print_pass "structured parser detects multi-pipe command chain"
+else
+    print_fail "structured parser detects multi-pipe command chain" "multiple pipes are not supported yet" "$output"
+fi
+
 # Parser should reject malformed syntax cleanly
 output="$(printf "echo broken >\nexit\n" | "$MINISHELL" 2>&1 | clean_prompt_output)"
 if echo "$output" | grep -q "expected file after '>'"; then

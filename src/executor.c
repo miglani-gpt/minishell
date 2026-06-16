@@ -7,12 +7,12 @@
 #include "builtins.h"
 #include "redirection.h"
 #include "pipes.h"
-#include "background.h"
 
-void execute_external_command(char **args, int background)
+void execute_external_command(t_command *command, int background)
 {
-    pid_t pid = fork();
+    pid_t pid;
 
+    pid = fork();
     if (pid < 0)
     {
         perror("minishell: fork failed");
@@ -21,61 +21,42 @@ void execute_external_command(char **args, int background)
 
     if (pid == 0)
     {
-        if (setup_input_redirection(args, NULL) == -1)
+        if (apply_redirections(command->redirections, NULL, NULL) == -1)
         {
             exit(EXIT_FAILURE);
         }
 
-        if (setup_output_redirection(args, NULL) == -1)
-        {
-            exit(EXIT_FAILURE);
-        }
-
-        if (execvp(args[0], args) == -1)
+        if (execvp(command->argv[0], command->argv) == -1)
         {
             perror("minishell");
             exit(EXIT_FAILURE);
         }
     }
+
+    if (background)
+    {
+        printf("[background pid: %d]\n", pid);
+        waitpid(pid, NULL, WNOHANG);
+    }
     else
     {
-        if (background)
-        {
-            printf("[background pid: %d]\n", pid);
-            waitpid(pid, NULL, WNOHANG);
-        }
-        else
-        {
-            int status;
-            waitpid(pid, &status, 0);
-        }
+        int status;
+
+        waitpid(pid, &status, 0);
     }
 }
 
-void execute_command(char **args)
+void execute_command(t_command *command, int background)
 {
-    if (args[0] == NULL)
+    if (command == NULL || command->argv == NULL || command->argv[0] == NULL)
     {
         return;
     }
 
-    int background = is_background_process(args);
-
-    if (args[0] == NULL)
+    if (is_builtin(command->argv[0]))
     {
-        return;
-    }
-
-    if (has_pipe(args) != -1)
-    {
-        execute_piped_command(args);
-        return;
-    }
-
-    if (is_builtin(args[0]))
-    {
-        int saved_stdin = -1;
-        int saved_stdout = -1;
+        int saved_stdin;
+        int saved_stdout;
 
         if (background)
         {
@@ -83,26 +64,45 @@ void execute_command(char **args)
             return;
         }
 
-        if (setup_input_redirection(args, &saved_stdin) == -1)
+        if (apply_redirections(command->redirections, &saved_stdin, &saved_stdout) == -1)
         {
-            restore_input_redirection(saved_stdin);
+            restore_redirections(saved_stdin, saved_stdout);
             return;
         }
 
-        if (setup_output_redirection(args, &saved_stdout) == -1)
-        {
-            restore_input_redirection(saved_stdin);
-            restore_output_redirection(saved_stdout);
-            return;
-        }
-
-        handle_builtin(args);
-
-        restore_input_redirection(saved_stdin);
-        restore_output_redirection(saved_stdout);
-
+        handle_builtin(command->argv);
+        fflush(stdout);
+        restore_redirections(saved_stdin, saved_stdout);
         return;
     }
 
-    execute_external_command(args, background);
+    execute_external_command(command, background);
+}
+
+void execute_parsed_input(t_parsed_input *parsed)
+{
+    if (parsed == NULL || parsed->commands == NULL)
+    {
+        return;
+    }
+
+    if (parsed->command_count == 1)
+    {
+        execute_command(parsed->commands, parsed->is_background);
+        return;
+    }
+
+    if (parsed->is_background)
+    {
+        fprintf(stderr, "minishell: background execution not supported for pipelines yet\n");
+        return;
+    }
+
+    if (parsed->command_count == 2)
+    {
+        execute_piped_commands(parsed->commands);
+        return;
+    }
+
+    fprintf(stderr, "minishell: multiple pipes are not supported yet\n");
 }

@@ -19,8 +19,9 @@ The goal of MiniShell is to build a small but well-structured shell that support
 * Trims leading and trailing whitespace before execution
 * Treats tabs and other standard whitespace as argument separators
 * Parses commands using a lexer and parser instead of `strtok()`
+* Stores parsed commands in command/redirection data structures
 * Supports quoted strings as single arguments
-* Supports operators without surrounding spaces
+* Supports shell operators without surrounding spaces
 * Executes external Linux commands
 * Handles empty input safely
 * Exits cleanly using the `exit` command
@@ -143,6 +144,7 @@ minishell/
 ├── include/
 │   ├── background.h
 │   ├── builtins.h
+│   ├── command.h
 │   ├── executor.h
 │   ├── lexer.h
 │   ├── parser.h
@@ -153,6 +155,7 @@ minishell/
 ├── src/
 │   ├── background.c
 │   ├── builtins.c
+│   ├── command.c
 │   ├── executor.c
 │   ├── lexer.c
 │   ├── main.c
@@ -167,7 +170,8 @@ minishell/
 ├── docs/
 │   ├── PHASE_0_BUILD_RELIABILITY.md
 │   ├── PHASE_1_STRONG_INPUT_HANDLING.md
-│   └── PHASE_2_LEXER_PARSER.md
+│   ├── PHASE_2_LEXER_PARSER.md
+│   └── PHASE_3_COMMAND_STRUCTURES.md
 │
 ├── Makefile
 ├── README.md
@@ -184,10 +188,11 @@ minishell/
 | `src/main.c`        | Starts the shell                                       |
 | `src/shell.c`       | Handles prompt, input reading, and the main shell loop |
 | `src/lexer.c`       | Converts raw input into shell tokens                   |
-| `src/parser.c`      | Validates tokens and builds command argument arrays    |
-| `src/executor.c`    | Decides how commands should be executed                |
+| `src/parser.c`      | Builds structured command lists from tokens            |
+| `src/command.c`     | Owns command/redirection structures and cleanup        |
+| `src/executor.c`    | Decides how structured commands should be executed     |
 | `src/builtins.c`    | Handles built-in commands                              |
-| `src/redirection.c` | Handles input and output redirection                   |
+| `src/redirection.c` | Applies command-attached input and output redirections |
 | `src/pipes.c`       | Handles single-pipe command execution                  |
 | `src/background.c`  | Detects background process syntax using `&`            |
 
@@ -200,7 +205,7 @@ minishell/
 | `getline()`          | Reads a complete line of input from the user                  |
 | `memmove()`           | Normalizes input after trimming leading whitespace            |
 | `strlen()`            | Measures input length during cleanup                          |
-| custom lexer/parser | Splits input into shell-aware tokens and argument arrays       |
+| custom lexer/parser | Splits input into shell-aware tokens and command structures    |
 | `malloc()`           | Dynamically allocates memory                                  |
 | `free()`             | Releases dynamically allocated memory                         |
 | `fork()`             | Creates a child process                                       |
@@ -226,9 +231,37 @@ Detailed upgrade notes are available in:
 docs/PHASE_0_BUILD_RELIABILITY.md
 docs/PHASE_1_STRONG_INPUT_HANDLING.md
 docs/PHASE_2_LEXER_PARSER.md
+docs/PHASE_3_COMMAND_STRUCTURES.md
 ```
 
 ---
+
+## Phase 3 Architecture Update
+
+MiniShell now uses structured parsing instead of passing one flat `char **args` array through the whole program.
+
+A parsed line is represented as:
+
+```text
+t_parsed_input
+├── commands       linked list of t_command
+├── command_count  number of commands in the chain
+└── is_background  whether the final token was &
+```
+
+Each command stores only real executable arguments in `argv`. Redirections are stored separately:
+
+```text
+t_command
+├── argv           command and normal arguments
+├── argc           argument count
+├── redirections   linked list of t_redirection
+└── next           next command after a pipe
+```
+
+This is cleaner than removing `<`, `>`, `>>`, and filenames from `argv` during execution. It also prepares the project for Phase 4 multi-pipe execution.
+
+Current limitation: the parser can store command chains longer than two commands, but execution still intentionally supports only one pipe until Phase 4.
 
 ## Build Instructions
 
@@ -321,9 +354,6 @@ The tests check features such as:
 * Single pipe execution
 * Pipe with output redirection
 * Background process detection
-* Quoted string parsing
-* Operators without spaces
-* Parser syntax errors
 
 Example test output:
 
@@ -350,7 +380,7 @@ All tests passed.
 
 ```bash
 $ make
-gcc -Wall -Wextra -g -Iinclude src/main.c src/shell.c src/lexer.c src/parser.c src/executor.c src/builtins.c src/redirection.c src/pipes.c src/background.c -o minishell
+gcc -Wall -Wextra -g -Iinclude src/main.c src/shell.c src/parser.c src/executor.c src/builtins.c src/redirection.c src/pipes.c src/background.c -o minishell
 
 $ ./minishell
 minishell:/home/user/minishell> pwd
@@ -377,7 +407,6 @@ minishell:/home/user/minishell> ls src | grep .c
 background.c
 builtins.c
 executor.c
-lexer.c
 main.c
 parser.c
 pipes.c
@@ -396,17 +425,25 @@ minishell:/home/user/minishell> exit
 
 MiniShell is still under development. The current version has the following limitations:
 
-* The parser now supports quoted strings and operators without spaces. These work:
+* The parser requires spaces around special symbols.
+
+Works:
 
 ```bash
-echo "hello world"
+echo hello > output.txt
+wc -l < names.txt
+ls | grep .c
+sleep 10 &
+```
+
+May not work yet:
+
+```bash
 echo hello>output.txt
 wc -l<names.txt
 ls|grep .c
 sleep 10&
 ```
-
-However, the parser is still not a full Bash-compatible grammar. Escape handling, environment variable expansion, here-documents, `&&`, `||`, and `;` are not implemented yet.
 
 * Only one pipe is currently supported.
 
@@ -461,9 +498,6 @@ This will be handled in a future signal-handling phase.
 * [x] Basic shell prompt
 * [x] Read user input
 * [x] Parse simple commands
-* [x] Add lexer and parser layer
-* [x] Improve parser to handle symbols without spaces
-* [x] Add support for quoted strings
 * [x] Execute external commands
 * [x] Add built-in commands
 * [x] Add modular project structure
@@ -478,6 +512,8 @@ This will be handled in a future signal-handling phase.
 * [ ] Add `SIGCHLD` handling for background process cleanup
 * [ ] Add command history
 * [ ] Add support for multiple pipes
+* [ ] Improve parser to handle symbols without spaces
+* [ ] Add support for quoted strings
 * [ ] Add support for background pipelines
 * [ ] Add more unit tests for parser and command handling
 
@@ -500,8 +536,6 @@ This project demonstrates core concepts of Linux system programming and C develo
 * Makefile-based build system
 * Bash-based integration testing
 * Error handling in system-level programs
-* Lexer and parser design
-* Syntax validation before execution
 
 ---
 

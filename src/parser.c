@@ -1,49 +1,37 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "parser.h"
 #include "lexer.h"
 
-static char *duplicate_string(const char *source)
-{
-    size_t length;
-    char *copy;
-
-    if (source == NULL)
-    {
-        return NULL;
-    }
-
-    length = strlen(source);
-    copy = malloc(length + 1);
-    if (copy == NULL)
-    {
-        perror("minishell: malloc");
-        return NULL;
-    }
-
-    memcpy(copy, source, length + 1);
-    return copy;
-}
-
-static int is_redirection(t_token_type type)
+static int is_redirection_token(t_token_type type)
 {
     return type == TOKEN_REDIR_IN || type == TOKEN_REDIR_OUT || type == TOKEN_REDIR_APPEND;
 }
 
-static int count_tokens(t_token *tokens)
+static t_redir_type token_to_redir_type(t_token_type type)
 {
-    int count;
-
-    count = 0;
-    while (tokens != NULL)
+    if (type == TOKEN_REDIR_IN)
     {
-        count++;
-        tokens = tokens->next;
+        return REDIR_INPUT;
+    }
+    if (type == TOKEN_REDIR_APPEND)
+    {
+        return REDIR_APPEND;
     }
 
-    return count;
+    return REDIR_OUTPUT;
+}
+
+static t_parsed_input empty_parsed_input(void)
+{
+    t_parsed_input parsed;
+
+    parsed.commands = NULL;
+    parsed.command_count = 0;
+    parsed.is_background = 0;
+
+    return parsed;
 }
 
 static int validate_tokens(t_token *tokens)
@@ -66,14 +54,15 @@ static int validate_tokens(t_token *tokens)
     {
         if (current->type == TOKEN_PIPE)
         {
-            if (current->next == NULL || current->next->type == TOKEN_PIPE)
+            if (current->next == NULL || current->next->type == TOKEN_PIPE ||
+                current->next->type == TOKEN_BACKGROUND)
             {
                 fprintf(stderr, "minishell: syntax error near unexpected token '|'\n");
                 return -1;
             }
         }
 
-        if (is_redirection(current->type))
+        if (is_redirection_token(current->type))
         {
             if (current->next == NULL || current->next->type != TOKEN_WORD)
             {
@@ -95,14 +84,113 @@ static int validate_tokens(t_token *tokens)
     return 0;
 }
 
-static t_parsed_input empty_parsed_input(void)
+static int validate_commands_have_programs(t_command *commands)
+{
+    t_command *current;
+
+    current = commands;
+    while (current != NULL)
+    {
+        if (current->argc == 0)
+        {
+            fprintf(stderr, "minishell: syntax error: missing command\n");
+            return -1;
+        }
+
+        current = current->next;
+    }
+
+    return 0;
+}
+
+static int append_token_to_command(t_command *command, t_token **current)
+{
+    if ((*current)->type == TOKEN_WORD)
+    {
+        if (append_argument(command, (*current)->value) == -1)
+        {
+            return -1;
+        }
+        return 0;
+    }
+
+    if (is_redirection_token((*current)->type))
+    {
+        t_token *filename_token;
+
+        filename_token = (*current)->next;
+        if (append_redirection(command, token_to_redir_type((*current)->type),
+                               filename_token->value) == -1)
+        {
+            return -1;
+        }
+
+        *current = filename_token;
+        return 0;
+    }
+
+    return 0;
+}
+
+static t_parsed_input build_commands_from_tokens(t_token *tokens)
 {
     t_parsed_input parsed;
+    t_command *head;
+    t_command *tail;
+    t_command *current_command;
+    t_token *current;
 
-    parsed.args = NULL;
-    parsed.owned_values = NULL;
-    parsed.owned_count = 0;
+    parsed = empty_parsed_input();
+    head = NULL;
+    tail = NULL;
+    current_command = create_command();
+    if (current_command == NULL)
+    {
+        return parsed;
+    }
 
+    if (append_command(&head, &tail, current_command) == -1)
+    {
+        free_commands(current_command);
+        return parsed;
+    }
+
+    current = tokens;
+    while (current != NULL)
+    {
+        if (current->type == TOKEN_PIPE)
+        {
+            current_command = create_command();
+            if (append_command(&head, &tail, current_command) == -1)
+            {
+                free_commands(head);
+                return empty_parsed_input();
+            }
+        }
+        else if (current->type == TOKEN_BACKGROUND)
+        {
+            parsed.is_background = 1;
+        }
+        else
+        {
+            if (append_token_to_command(current_command, &current) == -1)
+            {
+                free_commands(head);
+                return empty_parsed_input();
+            }
+        }
+
+        current = current->next;
+    }
+
+    if (validate_commands_have_programs(head) == -1)
+    {
+        free_commands(head);
+        return empty_parsed_input();
+    }
+
+    parsed.commands = head;
+    parsed.command_count = command_count(head);
     return parsed;
 }
 
@@ -110,9 +198,6 @@ t_parsed_input parse_input(const char *line)
 {
     t_parsed_input parsed;
     t_token *tokens;
-    t_token *current;
-    int token_count;
-    int index;
 
     parsed = empty_parsed_input();
     tokens = lexer_tokenize(line);
@@ -128,73 +213,21 @@ t_parsed_input parse_input(const char *line)
         return parsed;
     }
 
-    token_count = count_tokens(tokens);
-    if (token_count >= MAX_ARGS)
-    {
-        fprintf(stderr, "minishell: too many arguments; maximum is %d\n", MAX_ARGS - 1);
-        free_tokens(tokens);
-        return parsed;
-    }
-
-    parsed.args = malloc(sizeof(char *) * (token_count + 1));
-    parsed.owned_values = malloc(sizeof(char *) * token_count);
-    if (parsed.args == NULL || parsed.owned_values == NULL)
-    {
-        perror("minishell: malloc");
-        free(parsed.args);
-        free(parsed.owned_values);
-        free_tokens(tokens);
-        return empty_parsed_input();
-    }
-
-    current = tokens;
-    index = 0;
-    while (current != NULL)
-    {
-        parsed.owned_values[index] = duplicate_string(current->value);
-        if (parsed.owned_values[index] == NULL)
-        {
-            parsed.owned_count = index;
-            free_parsed_input(&parsed);
-            free_tokens(tokens);
-            return empty_parsed_input();
-        }
-
-        parsed.args[index] = parsed.owned_values[index];
-        index++;
-        current = current->next;
-    }
-
-    parsed.args[index] = NULL;
-    parsed.owned_count = index;
-
+    parsed = build_commands_from_tokens(tokens);
     free_tokens(tokens);
+
     return parsed;
 }
 
 void free_parsed_input(t_parsed_input *parsed)
 {
-    int index;
-
     if (parsed == NULL)
     {
         return;
     }
 
-    if (parsed->owned_values != NULL)
-    {
-        index = 0;
-        while (index < parsed->owned_count)
-        {
-            free(parsed->owned_values[index]);
-            index++;
-        }
-    }
-
-    free(parsed->owned_values);
-    free(parsed->args);
-
-    parsed->args = NULL;
-    parsed->owned_values = NULL;
-    parsed->owned_count = 0;
+    free_commands(parsed->commands);
+    parsed->commands = NULL;
+    parsed->command_count = 0;
+    parsed->is_background = 0;
 }
